@@ -1,0 +1,31 @@
+{
+  "name": "econ_workflow",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "tsx logic/tests/coverage.test.ts",
+    "export-scxml": "tsx logic/export_scxml.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/3shn/econ_workflow.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/3shn/econ_workflow/issues"
+  },
+  "homepage": "https://github.com/3shn/econ_workflow#readme",
+  "dependencies": {
+    "@xstate/graph": "^3.0.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "xstate": "^5.28.0"
+  }
+}

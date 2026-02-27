@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Node.js
+node_modules/
+
+# Nix
+result
+result-*
+.direnv/
+
+# Generated outputs (re-created by scripts)
+pv_profile.csv
+load_profile.csv
+mems_core_logic.scxml
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

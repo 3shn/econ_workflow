@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: "write"
+      contents: "read"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install Nix via the Determinate Systems action
+      - uses: DeterminateSystems/determinate-nix-action@v3
+
+      # FlakeHub binary cache (replaces deprecated Magic Nix Cache)
+      - uses: DeterminateSystems/flakehub-cache-action@main
+
+      # Validate flake.nix inputs and outputs
+      - uses: DeterminateSystems/nix-flake-checker-action@main
+
+      # Check that the flake evaluates without errors
+      - name: nix flake check
+        run: nix flake check
+
+      # Run XState / TypeScript state-machine coverage tests
+      - name: npm test (XState coverage)
+        run: nix develop --no-pure-eval -c npm run test
+
+      # Run Python simulation & HIL tests
+      - name: pytest (simulation & HIL)
+        run: nix develop --no-pure-eval -c pytest
