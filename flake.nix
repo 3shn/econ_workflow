@@ -2,46 +2,18 @@
   description = "Front 1: MEMS Infrastructure – IEEE 2030.7-2017 (Kisengo Microgrid)";
 
   inputs = {
-    # Pin nixpkgs via FlakeHub for reproducibility
-    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
+    # Using the universal HTTPS tarball scheme so it works on any Nix version
+    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.tar.gz";
 
-    # flake-parts: modular flake output composition
     flake-parts = {
-      url = "github:hercules-ci/flake-parts";
+      url = "https://flakehub.com/f/hercules-ci/flake-parts/0.1.tar.gz";
       inputs.nixpkgs-lib.follows = "nixpkgs";
-    };
-
-    # devenv: declarative developer environments
-    devenv = {
-      url = "github:cachix/devenv";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # uv2nix: parse uv.lock and produce Nix Python environments
-    uv2nix = {
-      url = "github:pyproject-nix/uv2nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # pyproject-nix: low-level PEP 517/518 support for Nix
-    pyproject-nix = {
-      url = "github:pyproject-nix/pyproject.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # Build-system derivations for uv2nix wheels
-    pyproject-build-systems = {
-      url = "github:pyproject-nix/build-system-pkgs";
-      inputs.pyproject-nix.follows = "pyproject-nix";
-      inputs.uv2nix.follows = "uv2nix";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
+
   outputs = inputs @ { flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      imports = [ inputs.devenv.flakeModule ];
-
       systems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -50,56 +22,50 @@
       ];
 
       perSystem =
-        { config
-        , self'
-        , inputs'
-        , pkgs
-        , system
-        , ...
-        }: {
-          # ──────────────────────────────────────────────────────────────────
-          # Developer shell (entered via `nix develop`)
-          # ──────────────────────────────────────────────────────────────────
-          devenv.shells.default = {
+        { pkgs, ... }: {
+          devShells.default = pkgs.mkShell {
             name = "econ-mems";
 
             packages = with pkgs; [
-              # Node.js runtime for XState / TypeScript tooling
               nodejs_22
-              # uv for Python package management (uv2nix-compatible)
               uv
+              python312
+              
+              (writeShellScriptBin "run-all-tests" ''
+                set -e
+                echo "=== npm tests ==="
+                npm run test
+                echo ""
+                echo "=== pytest ==="
+                uv run pytest
+              '')
             ];
 
-            # Python 3.12 managed via uv (uv2nix parses uv.lock)
-            languages.python = {
-              enable = true;
-              uv = {
-                enable = true;
-                # Sync all dependency groups (including dev) on shell entry
-                sync = {
-                  enable = true;
-                  allExtras = true;
-                };
-              };
-            };
+            # Fix for pre-compiled Python wheels (numpy, pandas, etc.)
+            # Exposes basic C libraries so dynamically linked wheels work
+            env.LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+              pkgs.stdenv.cc.cc.lib
+              pkgs.zlib
+            ];
 
-            # JavaScript / Node.js – npm install on shell entry
-            languages.javascript = {
-              enable = true;
-              package = pkgs.nodejs_22;
-              npm.install.enable = true;
-            };
+            shellHook = ''
+              # Tell uv to use the project directory for its virtualenv
+              export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+              
+              # Guard network operations: only run if directories don't exist.
+              # If you need to update packages, run `uv sync` or `npm install` manually.
+              if [ ! -d "$UV_PROJECT_ENVIRONMENT" ]; then
+                echo "Bootstrapping uv virtual environment..."
+                uv sync --all-extras
+              fi
 
-            # Convenience: run both test suites from the shell
-            scripts.run-all-tests.exec = ''
-              set -e
-              echo "=== npm tests ==="
-              npm run test
-              echo ""
-              echo "=== pytest ==="
-              pytest
+              if [ ! -d "node_modules" ]; then
+                echo "Bootstrapping node_modules..."
+                npm install
+              fi
             '';
           };
         };
     };
 }
+
