@@ -16,11 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install Nix via the Determinate Systems action
+      # Install Nix via the Determinate Systems action (FlakeHub Cache built in)
       - uses: DeterminateSystems/determinate-nix-action@v3
 
-      # FlakeHub binary cache (replaces deprecated Magic Nix Cache)
-      - uses: DeterminateSystems/flakehub-cache-action@main
+      # Free fallback
+      - uses: nix-community/cache-nix-action@v1
 
       # Validate flake.nix inputs and outputs
       - uses: DeterminateSystems/flake-checker-action@main
