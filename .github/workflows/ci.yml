@@ -23,7 +23,7 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
 
       # Validate flake.nix inputs and outputs
-      - uses: DeterminateSystems/nix-flake-checker-action@main
+      - uses: DeterminateSystems/flake-checker-action@main
 
       # Check that the flake evaluates without errors
       - name: nix flake check
