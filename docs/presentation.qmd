@@ -16,8 +16,7 @@ format:
 The Econ-IoT system provides a robust, latency-aware **Microgrid Energy Management System (MEMS)** designed to govern isolated operations like the Kisengo mining project.
 
 *   **Focus**: Physical safety, operational clarity, reproducibility.
-*   **Methodology**: Highly reproducible, containerized infrastructure (Nix).
-*   **Guarantee**: Consistency between edge runtime behavior and development staging.
+*   **Methodology**: Highly reproducible logic and architecture.
 
 ## System Lifecycle
 
@@ -45,10 +44,8 @@ The **IEEE 2030.7-2017** standard formally defines the core functional blocks of
 
 To securely map and implement the IEEE 2030.7 standard, we utilize **XState v5**.
 
-XState is a library for creating, interpreting, and executing finite state machines and statecharts.
-
 *   By mathematically enforcing states, we eliminate undefined behavior (e.g., an "off" generator trying to sync).
-*   **Benefit**: Output can be dynamically transpiled to W3C-compliant **SCXML**.
+*   **Why not raw SCXML?** While SCXML is our end-goal format, manually authoring raw SCXML is notoriously error-prone and lacks modern tooling support. XState provides robust TypeScript integration, visual editors, and strict validation, while easily compiling *down* to strict SCXML for the controller.
 
 ## The MEMS Statechart
 
@@ -92,13 +89,17 @@ Here you can observe the actual six operational states corresponding exactly to 
 
 ## Assuring Transition Integrity
 
-Once the parameter boundaries and logic guards are defined in XState, the structure must be proven mathematically safe.
+Once the parameter boundaries and logic guards are defined in XState, the structure must be mathematically proven before risking physical hardware.
 
-*   **Traversal Testing**: Ensure every state node and edge is reachable.
-*   Current mechanism: Shortest path simulation (`getShortestPaths`).
-*   **Result**: 100% path coverage achieved mathematically prior to hardware realization.
+## Formal Verification Contenders
 
-*(Placeholder: Image showing SCXML diagram or formal verification Uppaal interface)*
+We are actively evaluating the following model checkers to guarantee transition safety:
+
+*   **TLA+**: Industry standard for distributed systems. Excellent at proving liveness and safety properties, but has a steep learning curve.
+*   **Spin (Promela)**: Highly optimized for software verification and multi-threaded race conditions.
+*   **UPPAAL**: Specialized in real-time systems. Native integration with timed automata makes it a strong contender for analyzing precise electrical transient windows.
+
+*(Placeholder: Image showing SCXML diagram or formal verification interface)*
 ![](verification_placeholder.png)
 
 ---
@@ -109,7 +110,8 @@ Once the parameter boundaries and logic guards are defined in XState, the struct
 
 Before any code touches a physical controller, the verified logic is evaluated dynamically using **Digital Twin** conditions mimicking target microgrids.
 
-*   **Solar Profile**: We utilize `pvlib` to approximate AC solar generation curves deterministically based on geographical Typical Meteorological Year (TMY) profiles.
+*   **Solar Profile**: We utilize `pvlib` to approximate AC solar generation curves deterministically.
+    *   *Alternatives*: NREL SAM or OpenDSS. `pvlib` was chosen for its Python-native integration and lightweight profile generation.
 *   **Load Profile**: We stochasticially simulate heavy industrial mining loads.
 
 ## Load Profile Anomalies
@@ -132,8 +134,12 @@ What is **mosaik**?
 
 Mosaik is a flexible co-simulation framework that allows independent simulators to interact within a synchronized time loop. It provides the Controller Hardware-in-the-Loop (CHIL) orchestration.
 
-*   **Physics Simulator**: Replicates battery state of charge (SoC) integration and frequency deviations.
-*   **Data Providers**: Streams the synthetic load and solar CSVs.
+## The Role of Mosaik vs Commercial HIL
+
+Mosaik orchestrates a pure software-in-the-loop physics environment.
+
+* **Does it replace commercial options?** No. While mosaik perfectly validates the state transitions and protocol bridging (software integration), final sign-off still requires dedicated hyper-realtime appliances.
+* **Eventual HIL target**: Commercial offerings like **Typhoon HIL** or OPAL-RT will eventually be used to test exact sub-millisecond inverter hardware responses before Kisengo deployment.
 
 ## Modbus TCP Bridging
 
@@ -158,8 +164,65 @@ Following successful simulation against the CHIL Modbus environment, the validat
 2.  **Streaming**: Redpanda consumes the topics; `FastStream` handles Python pydantic validation.
 3.  **Storage**: Validated telemetry routes cleanly to `TimescaleDB`.
 
-## Summary
+## The Nix Guarantee
 
-By maintaining a strict reliance on containerized testing (Nix) and fully verified SCXML states (XState), we assure that:
+A core tenet of our deployment is environment reproducibility via **Nix**.
 
+* By containerizing our development environments (flakes) and process orchestration (process-compose), we eliminate "works on my machine" drift.
+* **Summary**: Containerized testing (Nix) + verified states (XState) ensures:
 > *"The on-site physical controller node acts exactly like the testbed mock."*
+
+---
+
+# 5. Remote Operations (DRC)
+
+## Challenge: The Kisengo Site
+
+Operating in the Democratic Republic of the Congo presents substantial logistical hurdles. Flying engineers to address software bugs is prohibitively expensive and slow.
+
+We require a secure, reliable Software-Defined Wide Area Network (SD-WAN) to manage the edge controllers.
+
+## SD-WAN Contenders
+
+*   **ZeroTier**: Battle-tested and extremely easy to set up. However, relies heavily on proprietary controller infrastructure.
+*   **Tailscale**: Built on WireGuard, incredible usability. However, it requires reliance on their centralized coordination servers.
+*   **EasyTier**: A decentralized, open-source VPN solution. It builds peer-to-peer networks without requiring a central topology.
+
+## Why EasyTier?
+
+We are currently leaning towards **EasyTier** for the Kisengo implementation.
+
+1.  **Fully OSS**: No vendor lock-in or licensing bottlenecks.
+2.  **Decentralized**: Operates independently even if an external coordinating node goes down, crucial for unreliable African ISPs.
+3.  **Bridge functionality**: Easily bridges the isolated PLC subnets out to the secure engineering network securely.
+
+## EasyTier Architecture
+
+```{mermaid}
+flowchart TD
+    subgraph HQ [Engineering HQ]
+        Eng[Engineer Laptop]
+    end
+
+    subgraph Cloud [Public Cloud]
+        PublicNode[EasyTier Public Relay Node]
+    end
+
+    subgraph Kisengo [Kisengo Site (DRC)]
+        Edge[Edge Controller]
+        subgraph PLC_Subnet [Microgrid OT Network]
+            DSE[Diesel Controller]
+            BESS[BESS Inverter]
+        end
+        Edge -->|Modbus TCP| DSE
+        Edge -->|Modbus TCP| BESS
+    end
+
+    Eng <-->|EasyTier P2P / Relay| Edge
+    Eng -.->|Fallback| PublicNode
+    Edge -.->|Fallback| PublicNode
+```
+
+<div class="notes">
+With EasyTier, the engineer can remotely tunnel directly securely to the Edge Controller, which acting as a proxy, allows diagnostic access directly to the physical modbus registers without exposing the industrial control layer to the public internet.
+</div>
