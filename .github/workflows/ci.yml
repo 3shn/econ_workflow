@@ -15,16 +15,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
+      
       # Install Nix via the Determinate Systems action (FlakeHub Cache built in)
-      - uses: DeterminateSystems/determinate-nix-action@v3
-
-      # Free fallback
-      - uses: nix-community/cache-nix-action@v1
-
+      - uses: DeterminateSystems/determinate-nix-action@v3.16.3
+      
+      # Set up Nix build cache using latest cache-nix-action
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          key: ${{ runner.os }}-nix-${{ hashFiles('flake.nix') }}
+      
       # Validate flake.nix inputs and outputs
       - uses: DeterminateSystems/flake-checker-action@main
-
+      
       # Check that the flake evaluates without errors
       - name: nix flake check
         run: nix flake check
