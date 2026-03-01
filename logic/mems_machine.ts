@@ -148,6 +148,7 @@ export const memsMachine = createMachine(
       /** Grid voltage within ±10% of 33 kV and frequency within ±0.5 Hz */
       gridVoltageAndFrequencyOk: ({ context }) =>
         context.grid_voltage >= 30.0 &&
+        context.grid_voltage <= 36.3 &&
         context.grid_frequency >= 49.5 &&
         context.grid_frequency <= 50.5,
 

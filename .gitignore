@@ -26,3 +26,7 @@ mems_core_logic.scxml
 .idea/
 *.swp
 *.swo
+
+# Quarto
+docs/_site/
+docs/.quarto/

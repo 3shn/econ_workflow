@@ -1,0 +1,165 @@
+---
+title: "Microgrid Setup Workflow"
+subtitle: "Econ-IoT MEMS Architecture & Lifecycle"
+format:
+  revealjs:
+    theme: default
+    slide-number: true
+    preview-links: auto
+    chalkboard: true
+---
+
+# Introduction to Econ MEMS
+
+## Overview
+
+The Econ-IoT system provides a robust, latency-aware **Microgrid Energy Management System (MEMS)** designed to govern isolated operations like the Kisengo mining project.
+
+*   **Focus**: Physical safety, operational clarity, reproducibility.
+*   **Methodology**: Highly reproducible, containerized infrastructure (Nix).
+*   **Guarantee**: Consistency between edge runtime behavior and development staging.
+
+## System Lifecycle
+
+Our engineering workflow focuses strictly on design, simulation, and verification before physical deployment.
+
+1.  **State Machine Definition**: Core logic via XState v5.
+2.  **Formal Verification**: Simulated path traversal mapping.
+3.  **Simulation & Testing**: `pvlib` & `mosaik` CHIL.
+4.  **EMS Implementation**: Edge deployment with hardware.
+
+---
+
+# 1. State Machine Definition
+
+## What is IEEE 2030.7?
+
+> *IEEE Standard for the Specification of Microgrid Controllers*
+
+The **IEEE 2030.7-2017** standard formally defines the core functional blocks of a microgrid controller. It establishes how a cluster of distributed energy resources (DERs) and loads must transition uniformly between logical states.
+
+*   Ensures reliable grid connection and islanding sequence.
+*   Standardizes the interoperability of microgrid components.
+
+## XState modeling
+
+To securely map and implement the IEEE 2030.7 standard, we utilize **XState v5**.
+
+XState is a library for creating, interpreting, and executing finite state machines and statecharts.
+
+*   By mathematically enforcing states, we eliminate undefined behavior (e.g., an "off" generator trying to sync).
+*   **Benefit**: Output can be dynamically transpiled to W3C-compliant **SCXML**.
+
+## The MEMS Statechart
+
+```{mermaid}
+stateDiagram-v2
+    direction LR
+    
+    INITIALIZE: INITIALIZE
+    SS1: SS1_GRID_CONNECTED
+    T1: T1_PLANNED_ISLAND
+    T2: T2_UNPLANNED_ISLAND
+    SS2: SS2_STABLE_ISLAND
+    T3: T3_RECONNECTION
+
+    INITIALIZE --> SS1 : GRID_AVAILABLE
+
+    SS1 --> T1 : PLANNED_COMMAND
+    SS1 --> T2 : GRID_FAULT
+
+    T1 --> SS2 : TRANSFER_COMPLETE
+    T1 --> SS1 : TRANSFER_FAILED
+
+    T2 --> SS2 : FREQUENCY_STABLE
+    T2 --> INITIALIZE : ISLAND_FAILED
+
+    SS2 --> T3 : RECONNECT_COMMAND
+    SS2 --> T3 : GRID_RESTORED
+    SS2 --> T2 : ISLAND_FAULT
+
+    T3 --> SS1 : SYNC_COMPLETE
+    T3 --> SS2 : SYNC_FAILED
+```
+
+<div class="notes">
+Here you can observe the actual six operational states corresponding exactly to the IEEE documentation, strictly bounding when and how our microgrid transitions to islanded scenarios.
+</div>
+
+---
+
+# 2. Formal Verification
+
+## Assuring Transition Integrity
+
+Once the parameter boundaries and logic guards are defined in XState, the structure must be proven mathematically safe.
+
+*   **Traversal Testing**: Ensure every state node and edge is reachable.
+*   Current mechanism: Shortest path simulation (`getShortestPaths`).
+*   **Result**: 100% path coverage achieved mathematically prior to hardware realization.
+
+*(Placeholder: Image showing SCXML diagram or formal verification Uppaal interface)*
+![](verification_placeholder.png)
+
+---
+
+# 3. Simulation & Testing
+
+## Synthesizing Real-World Conditions
+
+Before any code touches a physical controller, the verified logic is evaluated dynamically using **Digital Twin** conditions mimicking target microgrids.
+
+*   **Solar Profile**: We utilize `pvlib` to approximate AC solar generation curves deterministically based on geographical Typical Meteorological Year (TMY) profiles.
+*   **Load Profile**: We stochasticially simulate heavy industrial mining loads.
+
+## Load Profile Anomalies
+
+Our simulator generates boundary anomalies like induction motor start-up transients.
+
+```{mermaid}
+xychart-beta
+    title "Rock Crusher Inrush Profile (Simulated)"
+    x-axis [0s, 1s, 2s, 3s, 4s, 5s]
+    y-axis "Draw (kW)" 0 --> 1500
+    line [1500, 1000, 600, 400, 300, 250]
+```
+
+These extreme start-up currents are accurately reflected in our `load_profile.csv` generation to test the control limits of the battery integration.
+
+## Mosaik Co-Simulation (CHIL)
+
+What is **mosaik**?
+
+Mosaik is a flexible co-simulation framework that allows independent simulators to interact within a synchronized time loop. It provides the Controller Hardware-in-the-Loop (CHIL) orchestration.
+
+*   **Physics Simulator**: Replicates battery state of charge (SoC) integration and frequency deviations.
+*   **Data Providers**: Streams the synthetic load and solar CSVs.
+
+## Modbus TCP Bridging
+
+Mosaik calculates physical reality, but the controller expects to speak to vendor hardware.
+
+*   The orchestrator uses an async **Modbus TCP** bridge.
+*   It dynamically proxies the physical outputs (Voltage, SoC) down to standard holding registers.
+*   **Result**: The logic tests against registers mapped accurately to proprietary **Deep Sea Electronics (DSE)** and **Sungrow** protocols.
+
+*(Placeholder: Architecture diagram of mosaik connecting out to Modbus clients)*
+![](mosaik_bridge_placeholder.png)
+
+---
+
+# 4. EMS Implementation
+
+## Deploying to Edge Hardware
+
+Following successful simulation against the CHIL Modbus environment, the validated data contracts and schemas are deployed.
+
+1.  **Transport**: Edge devices ingest sensor states and publish to MQTT.
+2.  **Streaming**: Redpanda consumes the topics; `FastStream` handles Python pydantic validation.
+3.  **Storage**: Validated telemetry routes cleanly to `TimescaleDB`.
+
+## Summary
+
+By maintaining a strict reliance on containerized testing (Nix) and fully verified SCXML states (XState), we assure that:
+
+> *"The on-site physical controller node acts exactly like the testbed mock."*

@@ -57,7 +57,7 @@ class TestLoadProfiler:
         assert df["P_ventilation_kW"].max() <= VENT_BASE_kW * 1.20
 
     def test_crusher_inrush_peak_is_6x_fla(self):
-        """Peak crusher draw must be approximately 6 × FLA (2 s resolution)."""
+        """Peak crusher draw (60-second average) must not exceed 6 × FLA."""
         from simulation.profiler.load import (
             generate_load_profile,
             CRUSHER_FLA_kW,

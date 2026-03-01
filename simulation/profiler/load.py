@@ -149,7 +149,13 @@ def generate_load_profile(
         # Random start offsets within the day (non-overlapping)
         available = list(range(24 * steps_per_hour - run_steps))
         rng.shuffle(available)
-        starts = sorted(available[: CRUSHER_STARTS_PER_DAY])
+        starts = []
+        for s in available:
+            if not starts or all(abs(s - x) >= inrush_ds_len for x in starts):
+                starts.append(s)
+            if len(starts) == CRUSHER_STARTS_PER_DAY:
+                break
+        starts.sort()
         for s in starts:
             global_start = day_start + s
             end = min(global_start + inrush_ds_len, total_steps)

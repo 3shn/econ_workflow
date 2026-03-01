@@ -129,22 +129,28 @@ class MicrogridPhysics:
         """
         net = pv_kw - load_kw  # positive → surplus → charge BESS
 
-        # Ideal BESS dispatch: absorb/supply net imbalance
-        bess_power_kw = -net   # negative = charging, positive = discharging
+        requested_bess_power = -net   # negative = charging, positive = discharging
 
-        if bess_power_kw > 0:
+        if requested_bess_power > 0:
             # Discharging
-            delta_soc = -(bess_power_kw / self.BESS_DISCHARGE_EFF) * dt_h / self.BESS_CAPACITY_kWh
+            delta_soc = -(requested_bess_power / self.BESS_DISCHARGE_EFF) * dt_h / self.BESS_CAPACITY_kWh
         else:
             # Charging
-            delta_soc = -(bess_power_kw * self.BESS_CHARGE_EFF) * dt_h / self.BESS_CAPACITY_kWh
+            delta_soc = -(requested_bess_power * self.BESS_CHARGE_EFF) * dt_h / self.BESS_CAPACITY_kWh
 
+        old_soc = self.soc
         self.soc = float(
             max(self.BESS_SOC_MIN, min(self.BESS_SOC_MAX, self.soc + delta_soc))
         )
+        actual_delta_soc = self.soc - old_soc
+
+        if actual_delta_soc < 0:
+            actual_bess_power = -(actual_delta_soc * self.BESS_CAPACITY_kWh / dt_h) * self.BESS_DISCHARGE_EFF
+        else:
+            actual_bess_power = -(actual_delta_soc * self.BESS_CAPACITY_kWh / dt_h) / self.BESS_CHARGE_EFF
 
         # Simplified frequency deviation model (droop: 1 Hz per 100 kW imbalance)
-        residual = net + bess_power_kw  # residual after BESS dispatch
+        residual = net + actual_bess_power  # residual after BESS dispatch (unmet load/generation)
         freq_hz = self.NOMINAL_FREQ_HZ + residual / 100.0
 
         # Simplified voltage: ±5% for ±300 kW net
@@ -155,7 +161,7 @@ class MicrogridPhysics:
             "net_power_kw": round(net, 2),
             "freq_hz": round(freq_hz, 4),
             "voltage_kv": round(voltage_kv, 4),
-            "bess_power_kw": round(bess_power_kw, 2),
+            "bess_power_kw": round(actual_bess_power, 2),
         }
 
 
@@ -168,59 +174,30 @@ def run_cosimulation(
     use_pymgrid: bool = False,
 ) -> None:
     """
-    Launch the mosaik co-simulation world.
-
-    Parameters
-    ----------
-    end_minutes:
-        Total simulation duration in minutes.
-    use_pymgrid:
-        If *True*, use pymgrid's Microgrid engine.
-        Otherwise, use the lightweight :class:`MicrogridPhysics` stub.
+    Launch the co-simulation world manually using CSV simulators.
     """
-    try:
-        import mosaik  # type: ignore[import-untyped]
-    except ImportError as exc:
-        raise ImportError(
-            "mosaik is required for co-simulation.  Install with: uv add mosaik"
-        ) from exc
-
     from simulation.hil.modbus_bridge import ModbusBridge
 
-    SIM_CONFIG: dict[str, Any] = {
-        "PVSim": {
-            "python": "simulation.hil.orchestrator:CSVSimulator",
-        },
-        "LoadSim": {
-            "python": "simulation.hil.orchestrator:CSVSimulator",
-        },
-    }
-
-    world = mosaik.World(SIM_CONFIG)  # type: ignore[attr-defined]
     bridge = ModbusBridge(host=MODBUS_HOST, port=MODBUS_PORT)
     physics = MicrogridPhysics()
 
-    pv_sim = world.start("PVSim", csv_path=str(CSV_PV))
-    load_sim = world.start("LoadSim", csv_path=str(CSV_LOAD))
-    pv_entity = pv_sim.CSVModel.create(1)[0]
-    load_entity = load_sim.CSVModel.create(1)[0]
+    pv_sim = CSVSimulator(CSV_PV)
+    load_sim = CSVSimulator(CSV_LOAD)
 
-    world.connect(pv_entity, load_entity, ("P_ac_kW", "pv_power"))
+    async def _loop() -> None:
+        logger.info("Starting manual co-simulation loop for %d minutes …", end_minutes)
+        for t in range(end_minutes):
+            pv_data = pv_sim.step()
+            load_data = load_sim.step()
+            
+            state = physics.step(
+                pv_kw=pv_data.get("P_ac_kW", 0.0),
+                load_kw=load_data.get("P_total_kW", 0.0),
+            )
+            await bridge.push_state(state)
+        logger.info("Co-simulation complete.")
 
-    async def step_callback(
-        time: int,
-        pv_data: dict[str, float],
-        load_data: dict[str, float],
-    ) -> None:
-        state = physics.step(
-            pv_kw=pv_data.get("P_ac_kW", 0.0),
-            load_kw=load_data.get("P_total_kW", 0.0),
-        )
-        await bridge.push_state(state)
-
-    logger.info("Starting mosaik simulation for %d minutes …", end_minutes)
-    world.run(until=end_minutes)
-    logger.info("Co-simulation complete.")
+    asyncio.run(_loop())
 
 
 if __name__ == "__main__":

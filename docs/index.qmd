@@ -1,0 +1,45 @@
+---
+title: "Microgrid Setup Workflow"
+---
+
+The Econ microgrid setup relies on a highly reproducible, containerized infrastructure implemented to guarantee consistency between edge runtime behavior and development staging. 
+
+## Project Workflow
+
+The core technical development workflow focuses strictly on the design, simulation, and software verification steps. Once verified, the components are provisioned to physical targets. The sequence of actions is composed of four stages:
+
+1. **State Machine Definition**
+2. **Formal Verification**
+3. **Simulation and Testing**
+4. **EMS Implementation (Edge Deployment)**
+
+### 1. State Machine Definition
+
+A finite state machine dictates the operational mode transitions of the entire microgrid network, implementing the authoritative logic defined by the IEEE 2030.7-2017 standard. The state transitions are encoded using **XState v5**.
+
+* **States Handled:** `INITIALIZE`, `SS1_GRID_CONNECTED`, `T1_PLANNED_ISLAND`, `T2_UNPLANNED_ISLAND`, `SS2_STABLE_ISLAND`, `T3_RECONNECTION`
+* **Outputs:** The verified application logic is exported dynamically to a W3C-compliant SCXML interface. 
+
+### 2. Formal Verification
+
+Once the logic parameters and boundaries are defined, structural assertions must be passed before physical implementation to guarantee valid paths under degraded conditions.
+
+* The SCXML transition models undergo simulated traversal testing (currently via `getShortestPaths`).
+* Every state transition achieves verifiable 100% path coverage.
+* *[Placeholder for future API references/Uppaal integrations]*
+
+### 3. Simulation and Testing
+
+Before deployment, changes to the state models are validated dynamically against synthesized historical scenarios imitating the target physical hardware (e.g. Kisengo site limitations).
+
+* **Profile Generation:** `pvlib` is used to approximate solar generation curves based on geographical TMY. Concurrently, a stochastic Python module produces industrial mining load cycles, incorporating edge-case scenarios including asymmetric induction motor rock-crusher transients.
+* **Controller Hardware-in-the-Loop (CHIL):** A `mosaik` co-simulation orchestrator runs a physical replication of battery charge cycling and system frequency deviations responding to the generated profile demands. 
+* **Protocol Bridging:** Values output by the co-simulation are asynchronously proxied to Modbus TCP servers simulating proprietary Deep Sea Electronics and Sungrow register bounds to validate telemetry extraction loops.
+
+### 4. EMS Implementation
+
+Verified logic architectures and schema rules are ultimately packaged as edge-runnable services utilizing the single overarching data contract.
+
+* **Transport Layer:** Local Edge devices dispatch their state mapping over MQTT.
+* **Redpanda/FastStream Pipeline:** Live streams are routed, filtered, and buffered automatically into TimescaleDB repositories.
+* **Replication:** Using Nix configurations and process-compose definitions, the verified system topology guarantees the on-site physical controller node acts exactly like the testbed mock.
