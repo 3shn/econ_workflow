@@ -20,7 +20,7 @@ jobs:
       - uses: DeterminateSystems/determinate-nix-action@v3.16.3
       
       # Set up Nix build cache using latest cache-nix-action
-      - uses: nix-community/cache-nix-action@v11
+      - uses: nix-community/cache-nix-action@v7
         with:
           key: ${{ runner.os }}-nix-${{ hashFiles('flake.nix') }}
       
