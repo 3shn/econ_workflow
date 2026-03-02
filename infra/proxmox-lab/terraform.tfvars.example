@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and replace placeholders.
+proxmox_endpoint  = "https://192.168.86.61:8006/api2/json"
+proxmox_node_name = "pve-a1"
+template_file_id  = "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
+datastore_id      = "local-lvm"
+bridge            = "vmbr0"
+hostname          = "lab-tiny-ct"
+vmid              = 9010
+start_after_create = false
+
+# Prefer setting this as an environment variable instead of in tfvars:
+# export TF_VAR_proxmox_api_token='root@pam!terraform=REPLACE_WITH_SECRET'
+# proxmox_api_token = "root@pam!terraform=REPLACE_WITH_SECRET"
+
+ssh_public_keys = [
+  "ssh-ed25519 AAAA... replace-with-your-key"
+]

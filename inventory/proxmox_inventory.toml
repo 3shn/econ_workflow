@@ -1,0 +1,78 @@
+[meta]
+name = "econ-lab"
+environment = "lab"
+owner = "platform-team"
+timezone = "UTC"
+
+[proxmox]
+api_url = "https://192.168.86.61:8006/api2/json"
+username = "root"
+realm = "pam"
+auth_ref = "env:PVE_API_TOKEN"
+cluster = "pve-cluster-a"
+datacenter = "dc-a"
+
+[[proxmox.nodes]]
+id = "pve-a1"
+hostname = "192.168.86.61"
+management_ip = "192.168.86.61"
+role = "compute"
+
+[[networks]]
+id = "mgmt"
+vlan = 10
+cidr = "10.10.0.0/24"
+gateway = "10.10.0.1"
+purpose = "Management"
+
+[[networks]]
+id = "lab-app"
+vlan = 120
+cidr = "10.120.0.0/24"
+gateway = "10.120.0.1"
+purpose = "App test segment"
+
+[[assets]]
+id = "vm-router-01"
+kind = "vm"
+platform = "vyos"
+proxmox_node = "pve-a1"
+network_id = "lab-app"
+ip = "10.120.0.10"
+criticality = "medium"
+owner = "netops"
+
+[[assets]]
+id = "vm-client-01"
+kind = "vm"
+platform = "ubuntu"
+proxmox_node = "pve-a1"
+network_id = "lab-app"
+ip = "10.120.0.101"
+criticality = "low"
+owner = "qa"
+
+[[services]]
+id = "ssh-router"
+asset_id = "vm-router-01"
+name = "ssh"
+listen_ip = "10.120.0.10"
+port = 22
+protocol = "tcp"
+auth_ref = "vault:kv/network/router-01"
+
+[[services]]
+id = "iperf-server"
+asset_id = "vm-client-01"
+name = "iperf3"
+listen_ip = "10.120.0.101"
+port = 5201
+protocol = "tcp"
+auth_ref = "none"
+
+[[access]]
+id = "ops-vpn"
+kind = "vpn"
+endpoint = "vpn.example.net"
+scope = "mgmt"
+auth_ref = "vault:kv/access/ops-vpn"

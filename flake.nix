@@ -9,10 +9,15 @@
       url = "https://flakehub.com/f/hercules-ci/flake-parts/0.1.tar.gz";
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
+
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
 
-  outputs = inputs @ { flake-parts, ... }:
+  outputs = inputs @ { flake-parts, home-manager, nixpkgs, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
         "x86_64-linux"
@@ -20,6 +25,11 @@
         "x86_64-darwin"
         "aarch64-darwin"
       ];
+
+      flake.homeConfigurations.u = home-manager.lib.homeManagerConfiguration {
+        pkgs = import nixpkgs { system = "x86_64-linux"; };
+        modules = [ ./home/u.nix ];
+      };
 
       perSystem =
         { pkgs, ... }: {
@@ -68,4 +78,3 @@
         };
     };
 }
-

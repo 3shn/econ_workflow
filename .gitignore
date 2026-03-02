@@ -30,3 +30,11 @@ mems_core_logic.scxml
 # Quarto
 docs/_site/
 docs/.quarto/
+
+# Terraform / OpenTofu
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+*.auto.tfvars
